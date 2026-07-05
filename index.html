@@ -91,15 +91,62 @@
         background: #fffdf8;
       }
 
+      .product-image {
+        width: 100%;
+        max-height: 220px;
+        object-fit: cover;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        background: #eee;
+      }
+
       .product-name {
         font-weight: bold;
         margin-bottom: 4px;
+        font-size: 16px;
       }
 
       .product-price {
         font-size: 13px;
         color: #666;
         margin-bottom: 8px;
+      }
+
+      .product-short {
+        font-size: 13px;
+        line-height: 1.6;
+        margin: 8px 0;
+      }
+
+      .product-use {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #5f6f53;
+        background: #f1f7ef;
+        border-radius: 8px;
+        padding: 8px;
+        margin: 8px 0;
+      }
+
+      .detail-button {
+        width: auto;
+        margin: 8px 0 10px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: #e8f3e8;
+        color: #2f5d3a;
+        font-size: 13px;
+        font-weight: bold;
+      }
+
+      .product-detail {
+        display: none;
+        margin: 8px 0 12px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #f7f5ef;
+        font-size: 13px;
+        line-height: 1.7;
       }
 
       .notice {
@@ -154,10 +201,6 @@
         background: #999;
       }
 
-      .secondary-button {
-        background: #777;
-      }
-
       .small {
         font-size: 12px;
         color: #666;
@@ -186,7 +229,7 @@
         <h1 id="pageTitle">川根園 茶葉ご予約フォーム</h1>
 
         <div id="statusBox" class="status">
-          LINE連携を確認しています...
+          商品情報とLINE連携を確認しています...
         </div>
 
         <div id="closedArea" class="hidden">
@@ -217,6 +260,15 @@
           </div>
 
           <form id="reservationForm">
+            <label>商品・個数</label>
+
+            <div id="productList"></div>
+
+            <div class="total-box">
+              <div id="totalAmountDisplay">合計金額：0円</div>
+              <div id="totalDetailDisplay" class="total-detail"></div>
+            </div>
+
             <label for="customerName">お客様名</label>
             <input
               type="text"
@@ -242,15 +294,6 @@
               placeholder="例：神奈川県鎌倉市〇〇..."
               required
             ></textarea>
-
-            <label>商品・個数</label>
-
-            <div id="productList"></div>
-
-            <div class="total-box">
-              <div id="totalAmountDisplay">合計金額：0円</div>
-              <div id="totalDetailDisplay" class="total-detail"></div>
-            </div>
 
             <label for="note">備考</label>
             <textarea
@@ -278,33 +321,23 @@
 
     <script>
       var CONFIG = {
-        // ここだけ、今うまく動いているLIFF IDに変更してください。
+        // 今うまく動いているLIFF IDに変更してください。
         liffId: "2003410696-qvnVN2Xb",
 
-        storeName: "川根園",
+        // 前回作成したGASの商品マスタAPIのWebアプリURLに変更してください。
+        gasApiUrl: "https://script.google.com/macros/s/AKfycbyVmI58lV8N9NLuqoZAscmBaCU_UMuExBk-fUfxvSmOp4UwmT6xXdTBzDI42IXK0MuJ/exec",
+
         formTitle: "川根園 茶葉ご予約フォーム",
-        pickupStartDate: "2026年5月10日",
 
-        // 受付を止めたいときは false にしてください。
+        // URLにstore指定がない場合の初期値です。
+        defaultStoreKey: "ofuna"
+      };
+
+      var appState = {
+        storeKey: "",
+        pickupStartDate: "",
         reservationOpen: true,
-
-        products: [
-          {
-            name: "新茶100g",
-            price: 1080,
-            maxQty: 10
-          },
-          {
-            name: "深むし茶100g",
-            price: 1080,
-            maxQty: 10
-          },
-          {
-            name: "贈答用セット",
-            price: 3000,
-            maxQty: 5
-          }
-        ]
+        products: []
       };
 
       var lineProfile = null;
@@ -315,16 +348,42 @@
 
       async function initializePage() {
         document.getElementById("pageTitle").textContent = CONFIG.formTitle;
-        document.getElementById("pickupStartDateText").textContent = CONFIG.pickupStartDate;
 
-        if (!CONFIG.reservationOpen) {
-          document.getElementById("statusBox").className = "status warning";
-          document.getElementById("statusBox").textContent = "現在、予約受付は終了しています。";
-          document.getElementById("closedArea").classList.remove("hidden");
-          return;
+        appState.storeKey = getStoreKeyFromUrl();
+
+        try {
+          var publicConfig = await loadPublicConfig(appState.storeKey);
+
+          if (!publicConfig.success) {
+            showError(publicConfig.message || "商品情報を取得できませんでした。");
+            return;
+          }
+
+          appState.storeKey = publicConfig.storeKey || appState.storeKey;
+          appState.pickupStartDate = publicConfig.pickupStartDate || "指定日";
+          appState.reservationOpen = publicConfig.reservationOpen !== false;
+          appState.products = publicConfig.products || [];
+
+          document.getElementById("pickupStartDateText").textContent =
+            appState.pickupStartDate;
+
+          if (!appState.reservationOpen) {
+            document.getElementById("statusBox").className = "status warning";
+            document.getElementById("statusBox").textContent = "現在、予約受付は終了しています。";
+            document.getElementById("closedArea").classList.remove("hidden");
+            return;
+          }
+
+          if (appState.products.length === 0) {
+            showError("現在、表示できる商品がありません。");
+            return;
+          }
+
+          await initializeLiff();
+
+        } catch (error) {
+          showError(error.message || String(error));
         }
-
-        await initializeLiff();
       }
 
       async function initializeLiff() {
@@ -378,25 +437,151 @@
           updateLiveTotal();
 
         } catch (error) {
-          statusBox.className = "status error";
-          statusBox.innerHTML =
-            "LIFF初期化に失敗しました。<br>" +
-            escapeHtml(error.message || String(error));
+          showError("LIFF初期化に失敗しました。<br>" + escapeHtml(error.message || String(error)));
         }
+      }
+
+      function loadPublicConfig(storeKey) {
+        return new Promise(function(resolve, reject) {
+          if (!CONFIG.gasApiUrl || CONFIG.gasApiUrl === "ここにGAS_WEBアプリURLを入れる") {
+            reject(new Error("GAS API URLが未設定です。index.html内の gasApiUrl を設定してください。"));
+            return;
+          }
+
+          var callbackName =
+            "jsonpCallback_" +
+            Date.now() +
+            "_" +
+            Math.floor(Math.random() * 100000);
+
+          var script = document.createElement("script");
+
+          window[callbackName] = function(data) {
+            cleanupJsonp(script, callbackName);
+            resolve(data);
+          };
+
+          script.onerror = function() {
+            cleanupJsonp(script, callbackName);
+            reject(new Error("商品情報の取得に失敗しました。GASのWebアプリURLを確認してください。"));
+          };
+
+          var separator = CONFIG.gasApiUrl.indexOf("?") === -1 ? "?" : "&";
+
+          script.src =
+            CONFIG.gasApiUrl +
+            separator +
+            "store=" + encodeURIComponent(storeKey) +
+            "&callback=" + encodeURIComponent(callbackName) +
+            "&_=" + Date.now();
+
+          document.body.appendChild(script);
+        });
+      }
+
+      function cleanupJsonp(script, callbackName) {
+        try {
+          if (script && script.parentNode) {
+            script.parentNode.removeChild(script);
+          }
+        } catch (e) {}
+
+        try {
+          delete window[callbackName];
+        } catch (e) {
+          window[callbackName] = undefined;
+        }
+      }
+
+      function getStoreKeyFromUrl() {
+        var params = new URLSearchParams(window.location.search);
+
+        var directStore = params.get("store");
+        if (directStore) {
+          return normalizeStoreKey(directStore);
+        }
+
+        var liffState = params.get("liff.state");
+        if (liffState) {
+          var stateText = decodeURIComponent(liffState);
+          var queryText = "";
+
+          if (stateText.indexOf("?") === 0) {
+            queryText = stateText.substring(1);
+          } else if (stateText.indexOf("?") !== -1) {
+            queryText = stateText.split("?")[1];
+          }
+
+          if (queryText) {
+            var stateParams = new URLSearchParams(queryText);
+            var stateStore = stateParams.get("store");
+
+            if (stateStore) {
+              return normalizeStoreKey(stateStore);
+            }
+          }
+        }
+
+        return normalizeStoreKey(CONFIG.defaultStoreKey || "ofuna");
+      }
+
+      function normalizeStoreKey(value) {
+        return String(value || "")
+          .replace(/^\s+|\s+$/g, "")
+          .toLowerCase();
       }
 
       function renderProducts() {
         var productList = document.getElementById("productList");
         var html = "";
 
-        for (var i = 0; i < CONFIG.products.length; i++) {
-          var product = CONFIG.products[i];
+        for (var i = 0; i < appState.products.length; i++) {
+          var product = appState.products[i];
+          var detailId = "productDetail_" + i;
+
+          html += '<div class="product">';
+
+          if (product.imageUrl) {
+            html +=
+              '<img class="product-image" src="' +
+              escapeAttribute(product.imageUrl) +
+              '" alt="' +
+              escapeAttribute(product.name) +
+              '" onerror="this.style.display=\'none\';">';
+          }
 
           html +=
-            '<div class="product">' +
-              '<div class="product-name">' + escapeHtml(product.name) + '</div>' +
-              '<div class="product-price">価格：' + formatYen(product.price) + '</div>' +
-              '<select name="qty_' + i + '" onchange="updateLiveTotal()">';
+            '<div class="product-name">' + escapeHtml(product.name) + '</div>' +
+            '<div class="product-price">価格：' + formatYen(product.price) + '</div>';
+
+          if (product.shortDescription) {
+            html +=
+              '<div class="product-short">' +
+              escapeHtml(product.shortDescription) +
+              '</div>';
+          }
+
+          if (product.recommendedUse) {
+            html +=
+              '<div class="product-use">おすすめ：' +
+              escapeHtml(product.recommendedUse) +
+              '</div>';
+          }
+
+          if (product.detailDescription) {
+            html +=
+              '<button class="detail-button" type="button" onclick="toggleProductDetail(\'' +
+              detailId +
+              '\')">詳しく見る</button>' +
+              '<div id="' +
+              detailId +
+              '" class="product-detail">' +
+              escapeHtml(product.detailDescription) +
+              '</div>';
+          }
+
+          html +=
+            '<select name="qty_' + i + '" onchange="updateLiveTotal()">';
 
           for (var q = 0; q <= product.maxQty; q++) {
             html += '<option value="' + q + '">' + q + '個</option>';
@@ -410,20 +595,34 @@
         productList.innerHTML = html;
       }
 
+      function toggleProductDetail(detailId) {
+        var detail = document.getElementById(detailId);
+
+        if (!detail) {
+          return;
+        }
+
+        if (detail.style.display === "block") {
+          detail.style.display = "none";
+        } else {
+          detail.style.display = "block";
+        }
+      }
+
       function getSelectedProducts() {
         var form = document.getElementById("reservationForm");
         var formData = new FormData(form);
         var selectedProducts = [];
 
-        for (var i = 0; i < CONFIG.products.length; i++) {
+        for (var i = 0; i < appState.products.length; i++) {
           var qty = Number(formData.get("qty_" + i)) || 0;
 
           if (qty > 0) {
             selectedProducts.push({
-              name: CONFIG.products[i].name,
+              name: appState.products[i].name,
               qty: qty,
-              price: CONFIG.products[i].price,
-              subtotal: CONFIG.products[i].price * qty
+              price: Number(appState.products[i].price) || 0,
+              subtotal: (Number(appState.products[i].price) || 0) * qty
             });
           }
         }
@@ -574,7 +773,7 @@
           "合計金額：" + formatYen(totalAmount) + "\n\n" +
           "備考：" + (data.note || "なし") + "\n\n" +
           "【お受け取りについて】\n" +
-          CONFIG.pickupStartDate + "以降にご来店ください。\n" +
+          appState.pickupStartDate + "以降にご来店ください。\n" +
           "ご来店の際は、お名前をスタッフにお伝えください。";
 
         if (data.lineDisplayName) {
@@ -601,6 +800,12 @@
         }
       }
 
+      function showError(message) {
+        var statusBox = document.getElementById("statusBox");
+        statusBox.className = "status error";
+        statusBox.innerHTML = message;
+      }
+
       function formatYen(amount) {
         return Number(amount || 0).toLocaleString("ja-JP") + "円";
       }
@@ -616,6 +821,10 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttribute(text) {
+        return escapeHtml(text).replace(/`/g, "&#096;");
       }
     </script>
   </body>
