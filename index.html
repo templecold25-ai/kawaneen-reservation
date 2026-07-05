@@ -304,10 +304,10 @@
 
             <div class="notice">
               送信すると、予約内容がお客様のLINEトークに送信されます。<br>
-              店舗側でもLINEチャット上で予約内容を確認いたします。
+              店舗側でもLINEチャットと予約一覧で予約内容を確認いたします。
             </div>
 
-            <button type="button" id="submitButton" onclick="sendReservationToLine()">
+            <button type="button" id="submitButton" onclick="sendReservation()">
               この内容で予約する
             </button>
 
@@ -321,15 +321,9 @@
 
     <script>
       var CONFIG = {
-        // 今うまく動いているLIFF IDに変更してください。
-        liffId: "2003410696-qvnVN2Xb",
-
-        // 前回作成したGASの商品マスタAPIのWebアプリURLに変更してください。
-        gasApiUrl: "https://script.google.com/macros/s/AKfycbyVmI58lV8N9NLuqoZAscmBaCU_UMuExBk-fUfxvSmOp4UwmT6xXdTBzDI42IXK0MuJ/exec",
-
+        liffId: "ここにLIFF_IDを入れる",
+        gasApiUrl: "ここにGAS_WEBアプリURLを入れる",
         formTitle: "川根園 茶葉ご予約フォーム",
-
-        // URLにstore指定がない場合の初期値です。
         defaultStoreKey: "ofuna"
       };
 
@@ -653,7 +647,7 @@
           detailLines.join("\n");
       }
 
-      async function sendReservationToLine() {
+      async function sendReservation() {
         var form = document.getElementById("reservationForm");
         var formData = new FormData(form);
 
@@ -719,7 +713,7 @@
 
         var submitButton = document.getElementById("submitButton");
         submitButton.disabled = true;
-        submitButton.textContent = "LINEに送信中...";
+        submitButton.textContent = "LINE送信・保存中...";
 
         try {
           await liff.sendMessages([
@@ -729,15 +723,19 @@
             }
           ]);
 
+          await saveReservationToGoogle({
+            customerName: customerName,
+            phone: phone,
+            address: address,
+            products: products,
+            note: note
+          });
+
           showCompleteMessage(messageText);
 
         } catch (error) {
           alert(
-            "LINEへの送信に失敗しました。\n\n" +
-            "考えられる原因：\n" +
-            "・LINE公式アカウントとのトーク内から開いていない\n" +
-            "・chat_message.write が許可されていない\n" +
-            "・LIFFの設定が正しくない\n\n" +
+            "送信または保存に失敗しました。\n\n" +
             "エラー内容：\n" +
             (error.message || String(error))
           );
@@ -745,6 +743,44 @@
           submitButton.disabled = false;
           submitButton.textContent = "この内容で予約する";
         }
+      }
+
+      async function saveReservationToGoogle(data) {
+        if (!CONFIG.gasApiUrl || CONFIG.gasApiUrl === "ここにGAS_WEBアプリURLを入れる") {
+          throw new Error("GAS API URLが未設定です。");
+        }
+
+        var idToken = "";
+
+        try {
+          if (typeof liff.getIDToken === "function") {
+            idToken = liff.getIDToken() || "";
+          }
+        } catch (e) {
+          idToken = "";
+        }
+
+        var payload = {
+          action: "saveReservation",
+          storeKey: appState.storeKey,
+          lineUserId: lineProfile ? lineProfile.userId || "" : "",
+          lineDisplayName: lineProfile ? lineProfile.displayName || "" : "",
+          idToken: idToken,
+          customerName: data.customerName,
+          phone: data.phone,
+          address: data.address,
+          products: data.products,
+          note: data.note || ""
+        };
+
+        await fetch(CONFIG.gasApiUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify(payload)
+        });
       }
 
       function createReservationMessage(data) {
