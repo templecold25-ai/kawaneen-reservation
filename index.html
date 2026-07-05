@@ -111,6 +111,15 @@
         line-height: 1.6;
       }
 
+      .closed-box {
+        margin-top: 18px;
+        padding: 16px;
+        border-radius: 12px;
+        background: #fff6d8;
+        font-size: 14px;
+        line-height: 1.8;
+      }
+
       .total-box {
         margin-top: 18px;
         padding: 14px;
@@ -145,6 +154,10 @@
         background: #999;
       }
 
+      .secondary-button {
+        background: #777;
+      }
+
       .small {
         font-size: 12px;
         color: #666;
@@ -169,11 +182,26 @@
 
   <body>
     <div class="container">
-      <div class="card">
-        <h1>川根園 茶葉ご予約フォーム</h1>
+      <div class="card" id="mainCard">
+        <h1 id="pageTitle">川根園 茶葉ご予約フォーム</h1>
 
         <div id="statusBox" class="status">
           LINE連携を確認しています...
+        </div>
+
+        <div id="closedArea" class="hidden">
+          <p class="lead">
+            現在、茶葉のご予約受付は終了しております。
+          </p>
+
+          <div class="closed-box">
+            たくさんのご予約をいただき、ありがとうございました。<br>
+            次回の受付開始までお待ちください。
+          </div>
+
+          <p class="small">
+            ※すでにご予約済みのお客様は、店頭またはLINEトークよりお問い合わせください。
+          </p>
         </div>
 
         <div id="formArea" class="hidden">
@@ -184,7 +212,7 @@
 
           <div class="notice">
             <strong>お受け取りについて</strong><br>
-            ご予約商品は 2026年5月10日 以降にご来店ください。<br>
+            ご予約商品は <span id="pickupStartDateText"></span> 以降にご来店ください。<br>
             ご来店の際は、お名前をスタッフにお伝えください。
           </div>
 
@@ -232,16 +260,16 @@
             ></textarea>
 
             <div class="notice">
-              送信すると、予約内容がLINEトークに送信されます。<br>
-              店舗側でもLINEチャット上で内容を確認します。
+              送信すると、予約内容がお客様のLINEトークに送信されます。<br>
+              店舗側でもLINEチャット上で予約内容を確認いたします。
             </div>
 
             <button type="button" id="submitButton" onclick="sendReservationToLine()">
-              この内容をLINEに送信する
+              この内容で予約する
             </button>
 
             <p class="small">
-              ※このテスト版では、スプレッドシート保存は行いません。まずLINEトークに予約内容が送れるかを確認します。
+              ※送信後、LINEトーク画面に予約内容が表示されます。内容をご確認ください。
             </p>
           </form>
         </div>
@@ -249,48 +277,68 @@
     </div>
 
     <script>
-      // ここだけ、あなたのLIFF IDに変更してください。
-      // 例：var LIFF_ID = "1234567890-AbcdEfgh";
-      var LIFF_ID = "2003410696-qvnVN2Xb";
+      var CONFIG = {
+        // ここだけ、今うまく動いているLIFF IDに変更してください。
+        liffId: "2003410696-qvnVN2Xb",
 
-      var PICKUP_START_DATE = "2026年5月10日";
+        storeName: "川根園",
+        formTitle: "川根園 茶葉ご予約フォーム",
+        pickupStartDate: "2026年5月10日",
 
-      var PRODUCTS = [
-        {
-          name: "新茶100g",
-          price: 1080,
-          maxQty: 10
-        },
-        {
-          name: "深むし茶100g",
-          price: 1080,
-          maxQty: 10
-        },
-        {
-          name: "贈答用セット",
-          price: 3000,
-          maxQty: 5
-        }
-      ];
+        // 受付を止めたいときは false にしてください。
+        reservationOpen: true,
+
+        products: [
+          {
+            name: "新茶100g",
+            price: 1080,
+            maxQty: 10
+          },
+          {
+            name: "深むし茶100g",
+            price: 1080,
+            maxQty: 10
+          },
+          {
+            name: "贈答用セット",
+            price: 3000,
+            maxQty: 5
+          }
+        ]
+      };
 
       var lineProfile = null;
 
       window.onload = function() {
-        initializeLiff();
+        initializePage();
       };
+
+      async function initializePage() {
+        document.getElementById("pageTitle").textContent = CONFIG.formTitle;
+        document.getElementById("pickupStartDateText").textContent = CONFIG.pickupStartDate;
+
+        if (!CONFIG.reservationOpen) {
+          document.getElementById("statusBox").className = "status warning";
+          document.getElementById("statusBox").textContent = "現在、予約受付は終了しています。";
+          document.getElementById("closedArea").classList.remove("hidden");
+          return;
+        }
+
+        await initializeLiff();
+      }
 
       async function initializeLiff() {
         var statusBox = document.getElementById("statusBox");
 
         try {
-          if (!LIFF_ID || LIFF_ID === "ここにLIFF_IDを入れる") {
+          if (!CONFIG.liffId || CONFIG.liffId === "ここにLIFF_IDを入れる") {
             statusBox.className = "status error";
-            statusBox.textContent = "LIFF IDが未設定です。index.html内の LIFF_ID を設定してください。";
+            statusBox.textContent = "LIFF IDが未設定です。index.html内の liffId を設定してください。";
             return;
           }
 
           await liff.init({
-            liffId: LIFF_ID
+            liffId: CONFIG.liffId
           });
 
           if (!liff.isLoggedIn()) {
@@ -318,7 +366,7 @@
             if (lineProfile && lineProfile.displayName) {
               statusBox.innerHTML =
                 "LINE連携を確認しました。<br>" +
-                "表示名：" + escapeHtml(lineProfile.displayName);
+                "LINE表示名：" + escapeHtml(lineProfile.displayName);
             }
           } catch (profileError) {
             statusBox.className = "status warning";
@@ -341,8 +389,8 @@
         var productList = document.getElementById("productList");
         var html = "";
 
-        for (var i = 0; i < PRODUCTS.length; i++) {
-          var product = PRODUCTS[i];
+        for (var i = 0; i < CONFIG.products.length; i++) {
+          var product = CONFIG.products[i];
 
           html +=
             '<div class="product">' +
@@ -367,15 +415,15 @@
         var formData = new FormData(form);
         var selectedProducts = [];
 
-        for (var i = 0; i < PRODUCTS.length; i++) {
+        for (var i = 0; i < CONFIG.products.length; i++) {
           var qty = Number(formData.get("qty_" + i)) || 0;
 
           if (qty > 0) {
             selectedProducts.push({
-              name: PRODUCTS[i].name,
+              name: CONFIG.products[i].name,
               qty: qty,
-              price: PRODUCTS[i].price,
-              subtotal: PRODUCTS[i].price * qty
+              price: CONFIG.products[i].price,
+              subtotal: CONFIG.products[i].price * qty
             });
           }
         }
@@ -420,6 +468,26 @@
           return;
         }
 
+        if (customerName.length > 50) {
+          alert("お客様名が長すぎます。");
+          return;
+        }
+
+        if (phone.length > 20) {
+          alert("電話番号が長すぎます。");
+          return;
+        }
+
+        if (address.length > 200) {
+          alert("住所が長すぎます。");
+          return;
+        }
+
+        if (note.length > 300) {
+          alert("備考が長すぎます。");
+          return;
+        }
+
         var products = getSelectedProducts();
 
         if (products.length === 0) {
@@ -442,9 +510,9 @@
         });
 
         var confirmMessage =
-          "以下の内容をLINEトークに送信します。\n\n" +
+          "以下の内容で予約します。\n\n" +
           messageText +
-          "\n\n送信してよろしいですか？";
+          "\n\nこの内容で送信してよろしいですか？";
 
         if (!confirm(confirmMessage)) {
           return;
@@ -468,7 +536,7 @@
           alert(
             "LINEへの送信に失敗しました。\n\n" +
             "考えられる原因：\n" +
-            "・LINEトーク内から開いていない\n" +
+            "・LINE公式アカウントとのトーク内から開いていない\n" +
             "・chat_message.write が許可されていない\n" +
             "・LIFFの設定が正しくない\n\n" +
             "エラー内容：\n" +
@@ -476,7 +544,7 @@
           );
 
           submitButton.disabled = false;
-          submitButton.textContent = "この内容をLINEに送信する";
+          submitButton.textContent = "この内容で予約する";
         }
       }
 
@@ -506,7 +574,7 @@
           "合計金額：" + formatYen(totalAmount) + "\n\n" +
           "備考：" + (data.note || "なし") + "\n\n" +
           "【お受け取りについて】\n" +
-          PICKUP_START_DATE + "以降にご来店ください。\n" +
+          CONFIG.pickupStartDate + "以降にご来店ください。\n" +
           "ご来店の際は、お名前をスタッフにお伝えください。";
 
         if (data.lineDisplayName) {
@@ -517,13 +585,20 @@
       }
 
       function showCompleteMessage(messageText) {
-        var card = document.querySelector(".card");
+        var card = document.getElementById("mainCard");
 
         card.innerHTML =
-          "<h1>LINEに送信しました</h1>" +
-          "<p class='lead'>以下の予約内容をLINEトークに送信しました。</p>" +
+          "<h1>ご予約ありがとうございます</h1>" +
+          "<p class='lead'>以下の内容をLINEトークに送信しました。</p>" +
           "<pre>" + escapeHtml(messageText) + "</pre>" +
-          "<p class='small'>LINEトーク画面に戻り、メッセージが表示されているか確認してください。</p>";
+          "<p class='small'>LINEトーク画面に戻り、予約内容が表示されているかご確認ください。</p>" +
+          "<button type='button' onclick='closeLiffWindow()'>LINEトークに戻る</button>";
+      }
+
+      function closeLiffWindow() {
+        if (typeof liff !== "undefined" && liff.isInClient()) {
+          liff.closeWindow();
+        }
       }
 
       function formatYen(amount) {
